@@ -2,18 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
-
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
 use Illuminate\Validation\ValidationException;
+use App\Models\User;
 
 class AuthController extends Controller
 {
     /**
-     * Login do usuário
+     * Login
      */
     public function login(Request $request)
     {
@@ -26,12 +24,12 @@ class AuthController extends Controller
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['As credenciais fornecidas estão incorretas.'],
+                'email' => ['As credenciais fornecidas estão incorretas.']
             ]);
         }
 
-        // Criar token de acesso (Sanctum)
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Criar token Sanctum
+        $token = $user->createToken('auth_token', ['*'])->plainTextToken;
 
         return response()->json([
             'success' => true,
@@ -41,31 +39,34 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'is_admin' => $user->is_admin,
                 ],
                 'token' => $token,
                 'token_type' => 'Bearer'
             ]
-        ], 200);
+        ]);
     }
 
     /**
-     * Registro de novo usuário
+     * Registro
      */
     public function register(Request $request)
     {
-        $data = $request->validate([
+        $validated = $request->validate([
             'name'      => 'required|string|max:255',
             'email'     => 'required|email|unique:users',
             'password'  => 'required|min:6',
-            'is_admin'  => 'sometimes|boolean', // admin status
+            'is_admin'  => 'sometimes|boolean'
         ]);
 
-        $data['password'] = bcrypt($data['password']);
-        $data['is_admin'] = $request->input('is_admin', false);
+        // Garantir que usuário comum NÃO vire admin
+        $validated['is_admin'] = false;
 
-        $user = User::create($data);
+        $validated['password'] = bcrypt($validated['password']);
 
-        $token = $user->createToken('auth_token')->plainTextToken;
+        $user = User::create($validated);
+
+        $token = $user->createToken('auth_token', ['*'])->plainTextToken;
 
         return response()->json([
             'success' => true,
@@ -84,16 +85,21 @@ class AuthController extends Controller
     }
 
     /**
-     * Logout do usuário
+     * Logout
      */
     public function logout(Request $request)
     {
-        // Revoga o token atual do usuário
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Usuário não autenticado'], 401);
+        }
+
+        $user->currentAccessToken()->delete();
 
         return response()->json([
             'success' => true,
             'message' => 'Logout realizado com sucesso'
-        ], 200);
+        ]);
     }
 }
